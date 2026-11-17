@@ -195,7 +195,7 @@ async function understand(question: string): Promise<{ hits: any[]; intent: Inte
     hits.push(...r.filter((x: any) => x.score >= 0.9));
   }
   // Only a near-exact medicine name skips the AI (fuzzy words like "python"→"Jython" must not).
-  const symptomish = /\b(i have|i've|i am having|feel|feeling|pain|ache|fever|cough|vomit|diarr|rash|itch|bleed|dizz|symptom|sore|swell|burn|doctor|specialist|appointment)\b|درد|بخار|کھانسی|ڈاکٹر|تکلیف/i.test(question);
+  const symptomish = /\b(i have|i've|i am having|feel|feeling|pain|ache|fever|cough|vomit|diarr|rash|itch|bleed|dizz|symptom|sore|swell|burn|doctor|specialist|appointment|hospital|clinic|bukhar|bukhaar|dard|khansi|khaansi|zukam|nazla|ulti|dast|chakkar|kamzori|sardard|pait|pet dard|gala|jalan|kharish|daane|saans|takleef|tabiyat|tabiat|beemar|bimar|marz)\b|درد|بخار|کھانسی|ڈاکٹر|تکلیف|نزلہ|زکام|الٹی|دست|چکر|بیمار|طبیعت/i.test(question);
   if (hits.length && !symptomish) return { hits: hits.sort((a, b) => b.score - a.score), intent: "medicine", specialty: "", otc: "" };
 
   const raw = await llm(
@@ -207,6 +207,7 @@ Return JSON only:
  "otc": one of ${JSON.stringify(Object.keys(OTC))} or ""}
 Rules:
 - "medicine": asks about a specific medicine (where to buy, price, availability, alternatives).
+- The user may write in English, Urdu script or Roman Urdu (e.g. "mujhe bukhar hai" = I have fever, "sar dard" = headache, "khansi" = cough, "kis doctor ke pass jaaun" = which doctor should I see). Understand all of them.
 - "symptoms": describes a health problem or symptoms. Pick the most suitable specialty (General Physician if unsure; Pediatrician if the patient is a child; Gynecologist for pregnancy/periods). Pick "otc" ONLY for mild, common symptoms in adults that a pharmacist would normally help with (fever/body ache/headache → paracetamol; allergy/sneezing/runny nose → cetirizine; acidity/heartburn → antacid; loose motions → ors). Otherwise "".
 - "doctor": wants a doctor, specialist, hospital, clinic or appointment. Set specialty.
 - "app": how ordering, delivery, tracking or booking works in this app.
@@ -248,6 +249,8 @@ function finalize(answer: string, lang: "en" | "ur", ctx: { top: any; alternativ
   const m = MSG[lang];
   let a = answer.replace(/[*_#>`]/g, "").replace(/₹\s?/g, "Rs ").replace(/\bINR\b/g, "PKR").trim().slice(0, 900);
   if (!a || BAD_OUT.test(a)) a = m.scope;
+  // A refusal is returned as-is: no safety add-ons glued onto it.
+  if (a.includes(m.scope.slice(0, 40)) || a.includes(m.blocked.slice(0, 30))) return m.scope;
   const extra: string[] = [];
   const mentionsAlt = ctx.alternatives.some((x) => a.toLowerCase().includes(String(x.product_name).toLowerCase().split(" ")[0]))
     || /generic|alternative|cheaper|substitute|متبادل|سستا/i.test(a);
