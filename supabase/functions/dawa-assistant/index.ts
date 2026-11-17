@@ -2,8 +2,9 @@
 // Answers medicine questions grounded ONLY in our Supabase data
 // (DRAP medicines + demo pharmacy stock), in English or Urdu.
 //
-// Deploy:  supabase functions deploy dawa-assistant
-// Secret:  supabase secrets set GEMINI_API_KEY=your_key   (same key as extract-medicines)
+// Deploy:  supabase functions deploy dawa-assistant --no-verify-jwt
+// Secret:  GROQ_API_KEY (preferred, fast + generous free tier)  OR  GEMINI_API_KEY (fallback)
+//          Optional: GROQ_MODEL (default llama-3.3-70b-versatile), GEMINI_MODEL
 // SUPABASE_URL and SUPABASE_ANON_KEY are provided automatically by Supabase.
 
 const CORS = {
@@ -16,6 +17,8 @@ const json = (b: unknown, s = 200) =>
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
+const GROQ_MODEL = Deno.env.get("GROQ_MODEL") ?? "llama-3.3-70b-versatile";
 const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
 const MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 
@@ -36,7 +39,30 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   return r.json();
 }
 
-async function gemini(prompt: string, jsonOut = false) {
+// One entry point for the LLM: Groq if its key is set, otherwise Gemini.
+async function gemini(prompt: string, jsonOut = false): Promise<string> {
+  if (GROQ_KEY) return groq(prompt, jsonOut);
+  return geminiCall(prompt, jsonOut);
+}
+
+async function groq(prompt: string, jsonOut: boolean) {
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEY}` },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      temperature: 0.2,
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }],
+      ...(jsonOut ? { response_format: { type: "json_object" } } : {}),
+    }),
+  });
+  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const d = await r.json();
+  return d?.choices?.[0]?.message?.content ?? "";
+}
+
+async function geminiCall(prompt: string, jsonOut = false) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY! },
@@ -63,7 +89,7 @@ async function findMedicines(question: string) {
   // Urdu script / heavy misspelling → ask Gemini for the names, then search
   const raw = await gemini(
     `Extract medicine names (Pakistani brand or generic) from this question. Fix spelling. ` +
-      `Return JSON {"medicines":["name"]}. Question: ${question}`,
+      `Return JSON only: {"medicines":["name"]}. Question: ${question}`,
     true,
   );
   let names: string[] = [];
@@ -86,7 +112,7 @@ async function nearby(id: number, lat: number, lng: number) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  if (!GEMINI_KEY) return json({ error: "GEMINI_API_KEY not set" }, 500);
+  if (!GROQ_KEY && !GEMINI_KEY) return json({ error: "Set GROQ_API_KEY (or GEMINI_API_KEY) in Supabase secrets" }, 500);
 
   try {
     const { question, lang = "en", lat = 31.5204, lng = 74.3587, history = [] } = await req.json();

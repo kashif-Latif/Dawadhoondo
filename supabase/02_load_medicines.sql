@@ -11,7 +11,7 @@ insert into public.medicines
   (product_name, generic_name, generic_composition, formula_key, strength, dosage_form,
    company, licence, reg_no, category, pack_size, pack_units, mrp_pkr, price_per_unit,
    effective_from, rx_status, indication, is_common, source, search_text)
-select
+select distinct on (trim(product_name), reg_no, pack_size, mrp_pkr)   -- safe if CSV was imported twice
   trim(product_name),
   nullif(trim(generic_name), ''),
   nullif(trim(generic_composition), ''),
@@ -33,7 +33,8 @@ select
   nullif(trim(source), ''),
   nullif(trim(search_text), '')
 from public.medicines_import
-where coalesce(trim(product_name), '') <> '';
+where coalesce(trim(product_name), '') <> ''
+order by trim(product_name), reg_no, pack_size, mrp_pkr;
 
 analyze public.medicines;
 

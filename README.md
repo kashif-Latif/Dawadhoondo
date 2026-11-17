@@ -21,7 +21,7 @@ Text / photo / voice
 ## STEP 1 — Supabase database (10 min)
 
 1. Go to **supabase.com** → New project (free plan).
-   Then copy two values from **Project Settings → API**: the **Project URL** and the **anon public key**.
+   Then copy two values from **Project Settings → API Keys**: the **Project URL** and the **Publishable key** (`sb_publishable_…`). Never use the secret key in the frontend.
 2. **SQL Editor** → paste and run `supabase/01_schema.sql`.
 3. **Table Editor → `medicines_import` → Insert → Import data from CSV** → choose `pakistan_medicines_supabase.csv` (6 MB, 21,957 rows).
 4. **SQL Editor** → run `supabase/02_load_medicines.sql`. Expect `medicines = 21957`.
@@ -33,7 +33,11 @@ Text / photo / voice
 
 > Re-running `01_schema.sql` drops and recreates medicines, inventory and orders. Run steps 3–5 again after it.
 
-## STEP 2 — Get a Google Gemini API key (2 min)
+## STEP 2 — AI keys (3 min)
+
+**Groq** (voice assistant, fast, generous free tier): **https://console.groq.com/keys** → Create API Key → copy (`gsk_…`).
+
+**Gemini** (prescription photo / PDF reading only):
 
 1. Open **https://aistudio.google.com/apikey** → sign in with your Google account → **Create API key**.
 2. Copy the key (starts with `AIza…`).
@@ -48,10 +52,11 @@ On your laptop, inside this project folder:
 npm i -g supabase                         # Supabase CLI
 supabase login                            # opens browser
 supabase link --project-ref YOUR_PROJECT_REF   # the xxxx in https://xxxx.supabase.co
-supabase secrets set GEMINI_API_KEY=AIza...your_key
-supabase secrets set GEMINI_MODEL=gemini-2.5-flash   # optional; change if Google renames models
-supabase functions deploy extract-medicines
-supabase functions deploy dawa-assistant
+supabase secrets set GROQ_API_KEY=gsk_...your_key       # voice assistant
+supabase secrets set GEMINI_API_KEY=AIza...your_key     # photo / PDF reading
+# optional: GROQ_MODEL (default llama-3.3-70b-versatile), GEMINI_MODEL (default gemini-2.5-flash)
+supabase functions deploy extract-medicines --no-verify-jwt
+supabase functions deploy dawa-assistant --no-verify-jwt
 ```
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` are injected into functions automatically, so don't set them.
 
@@ -112,3 +117,11 @@ Every push to `main` redeploys automatically. HTTPS is required for the micropho
 ## Security
 - RLS: the public can only read medicines, pharmacies and stock. Orders are written only through `place_order`.
 - The Gemini key is kept in Supabase secrets only. The assistant can't invent prices or pharmacies: it only sees DB rows.
+
+## Dashboard alternative (no terminal)
+- **Edge Functions → Secrets:** add `GROQ_API_KEY` and `GEMINI_API_KEY`.
+- **Edge Functions → Deploy a new function → Via Editor:** create `extract-medicines` and `dawa-assistant`, pasting each `index.ts`.
+- In each function's settings, turn **Enforce JWT verification** OFF. The publishable key isn't a JWT.
+
+## Already ran v2 SQL?
+Run `supabase/04_patch_alternatives.sql` once. It stops the same brand repeating in alternatives.
