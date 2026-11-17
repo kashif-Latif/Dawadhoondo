@@ -180,3 +180,25 @@ Put your own phone's email as `PHARMACY_INBOX`. During the demo, place an order 
   The AI never writes SQL: every database call is a fixed, parameterised function.
 - **Terms of Use & Privacy:** linked in the panel footer and the assistant.
 - **Dark mode:** toggle in the top bar. It follows the phone or PC setting on the first visit, then remembers your choice.
+
+---
+
+## v8 — Real prices, Google-style routes, live location, Mini Doctor
+
+### Deploy
+1. Push the code. Vercel redeploys.
+2. SQL Editor → run `supabase/09_doctors_prices.sql`. It sets every pharmacy price to the official DRAP price, adds 51 demo hospitals and clinics, 192 demo doctors in 16 specialties, schedules and appointments.
+3. Re-deploy **`dawa-assistant`** and **`order-notify`** (JWT verification OFF).
+
+### What changed
+- **Real prices:** pharmacy price = DRAP maximum retail price (labelled "DRAP price"). No more random discounts.
+- **Road routes like Google Maps:** a blue route along real roads (OSRM, free, no key) with drive time (adjusted for city traffic), distance and road name. One tap opens turn-by-turn navigation in Google Maps. If the routing server is unreachable, it falls back to an "approx." line.
+- **Live location (required):** a blue dot that updates as you move, an accuracy circle, and a direction cone (compass on phones). If location is blocked, a screen explains how to allow it; "Continue with demo location (Lahore)" is there for demos. Pharmacies and doctors only re-load after you move more than 300 m.
+- **Doctors tab:** 16 specialties, nearby doctors with qualifications, experience, fee, rating, and the **next free slot**. Book: pick a day → time → patient details → appointment number `AP-XXXXXX` + confirmation email (patient + clinic inbox). Double-booking is impossible (enforced by the database).
+- **Mini Doctor** (the assistant):
+  - Describe your symptoms in English or Urdu. It suggests the right specialist and shows bookable doctors nearby.
+  - For mild adult symptoms it suggests an over-the-counter option with a "Find nearby" button ("ask the pharmacist for the dose").
+  - It lists the warning signs that need 1122.
+  - It never diagnoses, never recommends prescription medicines, and never gives doses. Children get a Pediatrician and no medicine suggestion.
+  - Emergencies get the 1122 message immediately and are never rate-limited.
+- **Map pin fix:** pins no longer jump to the top-left corner. The pop-in animation was overriding the map's positioning.

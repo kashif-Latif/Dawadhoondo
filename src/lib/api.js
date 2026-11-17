@@ -150,3 +150,38 @@ function fileToBase64(file) {
     r.readAsDataURL(file);
   });
 }
+
+// ---------------- Mini Doctor ----------------
+export async function nearbyDoctors(specialty, lat, lng, limit = 15) {
+  const { data, error } = await supabase.rpc("nearby_doctors", { p_specialty: specialty || null, p_lat: lat, p_lng: lng, p_limit: limit });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function listSpecialties() {
+  const { data, error } = await supabase.rpc("list_specialties");
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function doctorSlots(doctorId, day) {
+  const { data, error } = await supabase.rpc("doctor_slots", { p_doctor_id: doctorId, p_day: day });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function bookAppointment(b) {
+  const { data, error } = await supabase.rpc("book_appointment", {
+    p_doctor_id: b.doctorId, p_starts_at: b.startsAt, p_name: b.name, p_phone: b.phone, p_email: b.email, p_reason: b.reason,
+  });
+  if (error) throw new Error(error.message);
+  const appt = data?.[0];
+  let emailed = null;
+  try {
+    const { data: n } = await supabase.functions.invoke("order-notify", { body: { appointment_id: appt.appointment_id } });
+    emailed = n;
+  } catch (e) {
+    console.warn("Appointment email not sent:", e.message);
+  }
+  return { ...appt, emailed };
+}

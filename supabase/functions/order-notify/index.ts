@@ -3,7 +3,8 @@
 // (with Confirm / Dispatch / Deliver / Cancel buttons) to the pharmacy, via Brevo.
 //
 // Deploy: supabase functions deploy order-notify --no-verify-jwt
-// Secrets: BREVO_API_KEY, MAIL_FROM (verified sender in Brevo), PHARMACY_INBOX, SITE_URL
+// Also sends appointment confirmations: POST {appointment_id}
+// Secrets: BREVO_API_KEY, MAIL_FROM (verified sender in Brevo), PHARMACY_INBOX (also gets clinic copies), SITE_URL
 // SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
 const CORS = {
@@ -68,13 +69,52 @@ function summary(o: any) {
 const btn = (href: string, label: string, color: string) =>
   `<a href="${href}" style="display:inline-block;margin:4px 6px 4px 0;padding:10px 16px;border-radius:12px;background:${color};color:#fff;text-decoration:none;font-weight:700">${label}</a>`;
 
+async function notifyAppointment(id: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Bad appointment id" }, 400);
+  const r = await db(`appointments?id=eq.${id}&select=*,doctors(name,specialty,qualifications,fee_pkr,facilities(name,address,city,lat,lng))`);
+  const [a] = await r.json();
+  if (!a) return json({ error: "Appointment not found" }, 404);
+  if (a.emailed_at) return json({ ok: true, already: true });
+  if (Date.now() - new Date(a.created_at).getTime() > 15 * 60 * 1000) return json({ error: "Too old" }, 400);
+  const d = a.doctors, f = d.facilities;
+  const when = new Date(a.starts_at).toLocaleString("en-PK", { timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
+  const map = `https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lng}`;
+  const row = (k: string, v: string) => `<tr><td style="padding:6px 0;color:#64748b">${k}</td><td style="padding:6px 0;text-align:right;font-weight:600">${v}</td></tr>`;
+  const table = `<table style="width:100%;border-collapse:collapse">
+    ${row("Appointment no.", esc(a.appt_no))}${row("Doctor", `${esc(d.name)} · ${esc(d.specialty)}`)}
+    ${row("When", esc(when))}${row("Where", `${esc(f.name)}, ${esc(f.address)}`)}${row("Consultation fee", rs(d.fee_pkr))}
+    ${row("Patient", `${esc(a.patient_name)} · ${esc(a.phone)}`)}${a.reason ? row("Reason", esc(a.reason)) : ""}</table>`;
+  const sent: string[] = [];
+  const errors: string[] = [];
+  if (a.email) {
+    try {
+      await sendMail(a.email, a.patient_name, `Appointment ${a.appt_no} confirmed — ${d.name}, ${when}`,
+        shell("Your appointment is booked", `<p>Hi ${esc(a.patient_name)},</p><p>Your appointment with <b>${esc(d.name)}</b> (${esc(d.specialty)}) is booked.</p>
+          ${table}<p style="margin-top:18px">${btn(map, "Get directions", "#0d9488")}</p>
+          <p style="color:#64748b;font-size:12px">Please arrive 10 minutes early and bring any previous prescriptions or reports. To cancel, call the clinic.</p>`));
+      sent.push("patient");
+    } catch (e) { errors.push(String(e)); }
+  }
+  if (PHARMACY_INBOX) {
+    try {
+      await sendMail(PHARMACY_INBOX, f.name, `New appointment ${a.appt_no} — ${d.name}, ${when}`,
+        shell(`New appointment at ${f.name}`, `<p>A patient booked through DawaDhoondo.</p>${table}`));
+      sent.push("clinic");
+    } catch (e) { errors.push(String(e)); }
+  }
+  await db(`appointments?id=eq.${a.id}`, { method: "PATCH", body: JSON.stringify({ emailed_at: new Date().toISOString() }) });
+  if (errors.length) console.error(errors);
+  return json({ ok: errors.length === 0, sent, errors });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!BREVO || !FROM) return json({ error: "Email not configured (BREVO_API_KEY, MAIL_FROM)" }, 500);
 
   try {
-    const { order_id } = await req.json();
+    const { order_id, appointment_id } = await req.json();
+    if (appointment_id) return await notifyAppointment(String(appointment_id));
     if (!/^[0-9a-f-]{36}$/i.test(String(order_id))) return json({ error: "Bad order id" }, 400);
 
     const r = await db(`orders?id=eq.${order_id}&select=*,medicines(product_name,strength),pharmacies(name,address,city,email)`);

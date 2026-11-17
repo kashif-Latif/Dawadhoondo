@@ -19,11 +19,11 @@ export default function TopBar({ user, onCity, onGps, onTrack, theme, onTheme })
           <Icon name="pin" className="pointer-events-none absolute left-2.5 h-4 w-4 text-brand-600" />
           <select
             aria-label="Your location"
-            value={CITIES.some((c) => c.name === user.label) ? user.label : "__current"}
+            value="__current"
             onChange={(e) => (e.target.value === "__gps" ? onGps() : onCity(e.target.value))}
             className="cursor-pointer appearance-none rounded-xl bg-white/70 py-2 pl-8 pr-7 text-[13px] font-semibold outline-none ring-1 ring-slate-900/10 hover:bg-white focus:ring-brand-500"
           >
-            {!CITIES.some((c) => c.name === user.label) && <option value="__current">{user.label}</option>}
+            <option value="__current">{user.live ? "📍 My location" : user.label}</option>
             <option value="__gps">📍 Use my location</option>
             {CITIES.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>

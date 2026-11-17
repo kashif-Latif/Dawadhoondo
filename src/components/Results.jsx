@@ -104,6 +104,7 @@ export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onO
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[15px] font-extrabold">{fmtPKR(p.price)}</span>
+                <span className="text-[10.5px] font-semibold text-slate-400">DRAP price</span>
                 <Chip tone={p.stock < 10 ? "amber" : "brand"}>{p.stock < 10 ? `Only ${p.stock} left` : "In stock"}</Chip>
                 <Chip><Icon name="star" className="h-3 w-3" /> {p.rating}</Chip>
                 {p.open_24h && <Chip tone="sky">24/7</Chip>}
@@ -123,10 +124,10 @@ export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onO
                   className="btn-soft flex items-center justify-center gap-1 rounded-xl py-2 text-[12.5px] text-slate-700">
                   <Icon name="car" className="h-4 w-4" /> Ride
                 </a>
-                <a href={links.directions} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                <button onClick={(e) => { e.stopPropagation(); onSelect(p); }}
                   className="btn-soft flex items-center justify-center gap-1 rounded-xl py-2 text-[12.5px] text-slate-700">
                   <Icon name="route" className="h-4 w-4" /> Route
-                </a>
+                </button>
               </div>
             </article>
           );
