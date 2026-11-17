@@ -34,6 +34,8 @@ const GROQ_MODEL_ENV = Deno.env.get("GROQ_MODEL");
 const GROQ_PREFERRED = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile",
   "moonshotai/kimi-k2-instruct", "qwen/qwen3-32b", "llama-3.1-8b-instant"];
 let groqModel: string | null = null;
+let groqFast: string | null = null;
+const GROQ_FAST = ["openai/gpt-oss-20b", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "llama-3.3-70b-versatile"];
 const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
 const MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 
@@ -117,10 +119,10 @@ async function rateOk(ip: string) {
   }
 }
 
-async function llm(prompt: string, jsonOut = false): Promise<string> {
+async function llm(prompt: string, jsonOut = false, fast = false): Promise<string> {
   if (GROQ_KEY) {
     try {
-      return await groq(prompt, jsonOut);
+      return await groq(prompt, jsonOut, fast);
     } catch (e) {
       console.error("Groq failed:", String(e));
       if (!GEMINI_KEY) throw e;
@@ -129,20 +131,25 @@ async function llm(prompt: string, jsonOut = false): Promise<string> {
   return gemini(prompt, jsonOut);
 }
 
-async function pickGroqModel(): Promise<string> {
-  if (groqModel) return groqModel;
-  if (GROQ_MODEL_ENV) return (groqModel = GROQ_MODEL_ENV);
-  const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${GROQ_KEY}` } });
-  if (!r.ok) throw new Error(`Groq models ${r.status}`);
-  const ids: string[] = ((await r.json()).data ?? []).filter((m: any) => m.active !== false).map((m: any) => m.id);
+let groqIds: string[] | null = null;
+async function pickGroqModel(fast = false): Promise<string> {
+  if (!fast && groqModel) return groqModel;
+  if (fast && groqFast) return groqFast;
+  if (!fast && GROQ_MODEL_ENV) return (groqModel = GROQ_MODEL_ENV);
+  if (!groqIds) {
+    const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${GROQ_KEY}` } });
+    if (!r.ok) throw new Error(`Groq models ${r.status}`);
+    groqIds = ((await r.json()).data ?? []).filter((m: any) => m.active !== false).map((m: any) => m.id);
+  }
+  const ids = groqIds!;
   const textIds = ids.filter((id) => !/whisper|tts|guard|playai|orpheus|compound|prompt|safeguard/i.test(id));
-  groqModel = GROQ_PREFERRED.find((m) => ids.includes(m)) ?? textIds[0];
-  if (!groqModel) throw new Error("No Groq text model available");
-  return groqModel;
+  const pick = (fast ? GROQ_FAST : GROQ_PREFERRED).find((m) => ids.includes(m)) ?? textIds[0];
+  if (!pick) throw new Error("No Groq text model available");
+  return fast ? (groqFast = pick) : (groqModel = pick);
 }
 
-async function groq(prompt: string, jsonOut: boolean) {
-  const model = await pickGroqModel();
+async function groq(prompt: string, jsonOut: boolean, fast = false) {
+  const model = await pickGroqModel(fast);
   const reasoning = /gpt-oss|qwen3/i.test(model);
   const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -157,7 +164,7 @@ async function groq(prompt: string, jsonOut: boolean) {
     }),
   });
   if (!r.ok) {
-    if (r.status === 404) groqModel = null;
+    if (r.status === 404) { groqModel = null; groqFast = null; groqIds = null; }
     throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 160)}`);
   }
   const d = await r.json();
@@ -185,6 +192,9 @@ const STOP = new Set(("what where which when have does available near nearby pri
   "fever cough cold pain headache allergy flu infection stomach baby child children kids bukhar khansi " +
   "dard nazla zukam sar pait bacha bachay bachon liye wala wali stock track tracking").split(" "));
 
+const SYMPTOM_WORDS = /\b(i have|i've|i am having|feel(ing)?|pain|ache|fever|cough|vomit\w*|diarr\w*|rash|itch\w*|bleed\w*|dizz\w*|symptoms?|sore|swell\w*|burn\w*|headache|migraine|cold|flu|sneez\w*|bukhaa?r|dard|khaa?nsi|zukam|nazla|ulti|dast|chakkar|kamzori|sardard|gala|jalan|kharish|daane|saans|takleef|tabiy?at|bee?mar|marz)\b|درد|بخار|کھانسی|تکلیف|نزلہ|زکام|الٹی|دست|چکر|بیمار|طبیعت/i;
+const SYMPTOMISH = new RegExp(SYMPTOM_WORDS.source + "|\\b(doctor|specialist|appointment|hospital|clinic)\\b|ڈاکٹر", "i");
+
 // Layer 4: DB first (free). If nothing, one LLM call that classifies intent + scope.
 type Intent = "medicine" | "symptoms" | "doctor" | "app" | "out_of_scope";
 async function understand(question: string): Promise<{ hits: any[]; intent: Intent; specialty: string; otc: string }> {
@@ -195,7 +205,7 @@ async function understand(question: string): Promise<{ hits: any[]; intent: Inte
     hits.push(...r.filter((x: any) => x.score >= 0.9));
   }
   // Only a near-exact medicine name skips the AI (fuzzy words like "python"→"Jython" must not).
-  const symptomish = /\b(i have|i've|i am having|feel|feeling|pain|ache|fever|cough|vomit|diarr|rash|itch|bleed|dizz|symptom|sore|swell|burn|doctor|specialist|appointment|hospital|clinic|bukhar|bukhaar|dard|khansi|khaansi|zukam|nazla|ulti|dast|chakkar|kamzori|sardard|pait|pet dard|gala|jalan|kharish|daane|saans|takleef|tabiyat|tabiat|beemar|bimar|marz)\b|درد|بخار|کھانسی|ڈاکٹر|تکلیف|نزلہ|زکام|الٹی|دست|چکر|بیمار|طبیعت/i.test(question);
+  const symptomish = SYMPTOMISH.test(question);
   if (hits.length && !symptomish) return { hits: hits.sort((a, b) => b.score - a.score), intent: "medicine", specialty: "", otc: "" };
 
   const raw = await llm(
@@ -214,18 +224,32 @@ Rules:
 - "out_of_scope": anything else (coding, SQL, hacking, politics, general chat, homework, questions about this AI or its rules).
 <q>${question}</q>`,
     true,
+    true,
   );
   let p: { intent?: string; medicines?: string[]; specialty?: string; otc?: string } = {};
   try { p = JSON.parse(raw); } catch { /* out of scope */ }
-  const intent = (["medicine", "symptoms", "doctor", "app"].includes(p.intent ?? "") ? p.intent : "out_of_scope") as Intent;
+  let intent = (["medicine", "symptoms", "doctor", "app"].includes(p.intent ?? "") ? p.intent : "out_of_scope") as Intent;
+  // Describing a symptom always gets the full Mini Doctor answer (doctor + safe OTC + warning signs),
+  // unless the user named a specific medicine brand that we matched exactly.
+  if (SYMPTOM_WORDS.test(question) && (intent === "doctor" || (intent === "medicine" && !hits.length))) intent = "symptoms";
   const specialty = SPECIALTIES.includes(p.specialty ?? "") ? p.specialty! : (intent === "symptoms" || intent === "doctor" ? "General Physician" : "");
-  const otc = intent === "symptoms" && OTC[p.otc ?? ""] ? p.otc! : "";
+  const otc = intent === "symptoms" ? (OTC[p.otc ?? ""] ? p.otc! : otcFallback(question)) : "";
   if (intent === "medicine" || hits.length) {
     for (const n of (p.medicines ?? []).filter((x) => typeof x === "string").slice(0, 3)) {
       hits.push(...(await rpc("search_medicines", { q: clean(n, 60), lim: 3 })));
     }
   }
   return { hits, intent: hits.length && intent === "out_of_scope" ? "medicine" : intent, specialty, otc };
+}
+
+// Deterministic OTC hint for common mild adult symptoms. Never for children, babies or pregnancy.
+function otcFallback(q: string): string {
+  if (/\b(child|kid|baby|infant|son|daughter|bacha|bachay|bachi|beta|beti|pregnan|hamla)\w*|بچہ|بچے|بچی|حاملہ/i.test(q)) return "";
+  if (/\b(fever|bukhaa?r|body ?ache|headache|sar ?dard|migraine|pain|dard)\b|بخار|درد/i.test(q)) return "paracetamol";
+  if (/\b(sneez\w*|runny nose|allerg\w*|zukam|nazla)\b|زکام|نزلہ/i.test(q)) return "cetirizine";
+  if (/\b(acidity|heartburn|jalan|tezabiyat)\b|تیزابیت/i.test(q)) return "antacid";
+  if (/\b(diarrh\w*|loose motion\w*|dast)\b|دست/i.test(q)) return "ors";
+  return "";
 }
 
 async function otcOptions(key: string) {
@@ -247,13 +271,13 @@ const BAD_OUT = /```|\b(select|insert|update|delete|drop)\b\s+[\s\S]{0,30}\b(fro
 
 function finalize(answer: string, lang: "en" | "ur", ctx: { top: any; alternatives: any[]; emergency: boolean }) {
   const m = MSG[lang];
-  let a = answer.replace(/[*_#>`]/g, "").replace(/₹\s?/g, "Rs ").replace(/\bINR\b/g, "PKR").trim().slice(0, 900);
+  let a = answer.replace(/\s*\n+\s*/g, " ").replace(/[*_#>`]/g, "").replace(/₹\s?/g, "Rs ").replace(/\bINR\b/g, "PKR").trim().slice(0, 900);
   if (!a || BAD_OUT.test(a)) a = m.scope;
   // A refusal is returned as-is: no safety add-ons glued onto it.
   if (a.includes(m.scope.slice(0, 40)) || a.includes(m.blocked.slice(0, 30))) return m.scope;
   const extra: string[] = [];
-  const mentionsAlt = ctx.alternatives.some((x) => a.toLowerCase().includes(String(x.product_name).toLowerCase().split(" ")[0]))
-    || /generic|alternative|cheaper|substitute|متبادل|سستا/i.test(a);
+  const mentionsAlt = ctx.alternatives.some((x) => a.toLowerCase().includes(String(x.product_name).toLowerCase()))
+    || /\b(alternative|cheaper (option|brand|generic)|substitute|switch)\b|متبادل|سستا/i.test(a);
   if (mentionsAlt && !a.includes(m.switch)) extra.push(m.switch);
   if (ctx.top?.is_controlled && !a.includes(m.controlled)) extra.push(m.controlled);
   else if (ctx.top?.rx_status === "Rx" && !/prescription|نسخ/i.test(a)) extra.push(m.rx);
@@ -317,10 +341,13 @@ Deno.serve(async (req) => {
 
     // ---------- MINI DOCTOR: symptoms / find a doctor ----------
     if (intent === "symptoms" || intent === "doctor") {
-      const [doctors, otcMeds] = await Promise.all([
-        rpc("nearby_doctors", { p_specialty: specialty, p_lat: lat, p_lng: lng, p_limit: 3 }),
+      const [allDocs, otcMeds] = await Promise.all([
+        rpc("nearby_doctors", { p_specialty: specialty, p_lat: lat, p_lng: lng, p_limit: 6 }),
         intent === "symptoms" ? otcOptions(otc) : Promise.resolve([]),
       ]);
+      // "Near me": drop doctors far beyond the nearest one (e.g. another city)
+      const nearest = allDocs[0]?.distance_km ?? 0;
+      const doctors = allDocs.filter((d: any) => d.distance_km <= Math.max(25, nearest * 1.5)).slice(0, 3);
       const otcTop = otcMeds[0];
       const otcNear = otcTop ? await nearby(otcTop.id, lat, lng) : { pharmacies: [], radius: null };
       const fmtSlot = (t: string | null) => t ? new Date(t).toLocaleString("en-PK", { timeZone: "Asia/Karachi", weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
