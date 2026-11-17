@@ -60,6 +60,19 @@ cross join public.medicines m
 where (abs(hashtext(p.id::text || ':' || m.id::text)) % 10000) <
       case when m.is_common then 3500 else 300 end;
 
+-- If 08_search_safety_areas.sql was run before, give pins matching area names again.
+do $$ begin
+  if to_regclass('public.areas') is not null then
+    update public.pharmacies p set address = coalesce((
+      select 'Near ' || a.name || ', ' || p.city from public.areas a
+      where a.city = p.city
+        and (6371 * 2 * asin(sqrt(power(sin(radians(a.lat - p.lat) / 2), 2) +
+             cos(radians(p.lat)) * cos(radians(a.lat)) * power(sin(radians(a.lng - p.lng) / 2), 2)))) <= 2.5
+      order by power(a.lat - p.lat, 2) + power((a.lng - p.lng) * cos(radians(p.lat)), 2) limit 1), p.city)
+    where p.is_demo;
+  end if;
+end $$;
+
 analyze public.pharmacies;
 analyze public.inventory;
 

@@ -15,7 +15,7 @@ function pickVoice(langCode) {
   return voices.find((v) => v.lang === langCode) || voices.find((v) => v.lang?.startsWith(base)) || null;
 }
 
-export default function VoiceAgent({ user, onResult, bottomOffset = 0 }) {
+export default function VoiceAgent({ user, onResult, onTerms, bottomOffset = 0 }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState("en");
   const [listening, setListening] = useState(false);
@@ -58,7 +58,7 @@ export default function VoiceAgent({ user, onResult, bottomOffset = 0 }) {
     setBusy(true);
     try {
       const res = await askAssistant({ question: q, lang, lat: user.lat, lng: user.lng, history: nextHistory.slice(-6) });
-      setHistory((h) => [...h, { role: "assistant", text: res.answer }]);
+      setHistory((h) => [...h, { role: "assistant", text: res.answer, emergency: !!res.emergency, refused: !!res.refused }]);
       speak(res.answer);
       if (res.medicine) onResult?.(res);
     } catch (e) {
@@ -140,6 +140,9 @@ export default function VoiceAgent({ user, onResult, bottomOffset = 0 }) {
       <div className="scroll-thin flex-1 space-y-2 overflow-y-auto px-4 py-2 text-[13.5px]">
         {history.length === 0 && (
           <div className="space-y-2 pt-2 anim-fade-up">
+            <p className="rounded-2xl bg-brand-500/8 px-3 py-2 text-[12px] text-slate-600">
+              I can help you find medicines, prices, cheaper same-formula options and orders. I don't answer other topics.
+            </p>
             <p className="text-slate-500">Try asking:</p>
             {SUGGEST[lang].map((s) => (
               <button key={s} dir="auto" onClick={() => ask(s)}
@@ -151,7 +154,7 @@ export default function VoiceAgent({ user, onResult, bottomOffset = 0 }) {
         )}
         {history.map((m, i) => (
           <div key={i} dir="auto"
-            className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 leading-relaxed anim-fade-up ${m.role === "user" ? "ml-auto rounded-br-md bg-gradient-to-b from-brand-500 to-brand-600 text-white" : "rounded-bl-md bg-white/85 text-slate-800 ring-1 ring-slate-900/5"}`}>
+            className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 leading-relaxed anim-fade-up ${m.role === "user" ? "ml-auto rounded-br-md bg-gradient-to-b from-brand-500 to-brand-600 text-white" : m.emergency ? "rounded-bl-md bg-rose-50 font-semibold text-rose-700 ring-1 ring-rose-200" : "rounded-bl-md bg-white/85 text-slate-800 ring-1 ring-slate-900/5"}`}>
             {m.text}
           </div>
         ))}
@@ -178,7 +181,10 @@ export default function VoiceAgent({ user, onResult, bottomOffset = 0 }) {
           <Icon name="send" className="h-4.5 w-4.5" />
         </button>
       </form>
-      <p className="-mt-1 pb-2.5 text-center text-[10.5px] text-slate-400">Not medical advice · Emergency: call 1122</p>
+      <p className="-mt-1 pb-2.5 text-center text-[10.5px] text-slate-400">
+        Answers come only from our medicine database · Not medical advice · Emergency: 1122 ·{" "}
+        <button onClick={onTerms} className="font-semibold underline decoration-dotted">Terms</button>
+      </p>
     </div>
   );
 }

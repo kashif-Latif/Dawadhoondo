@@ -156,3 +156,27 @@ Tracking needs the order number + the same phone number, so strangers can't look
 
 ### Demo tip
 Put your own phone's email as `PHARMACY_INBOX`. During the demo, place an order on the laptop, open the pharmacy email on your phone, tap **Confirm**, and the laptop's tracking screen updates by itself.
+
+---
+
+## v7 — Search fix, safety, assistant guardrails, dark mode
+
+### Deploy
+1. Push the code. Vercel redeploys.
+2. SQL Editor → run `supabase/08_search_safety_areas.sql`.
+3. Re-deploy `dawa-assistant` and `extract-medicines` (JWT verification OFF).
+
+### What changed
+- **Search ranking:** results that start with what you typed and sound alike come first, then spelling distance, then similarity. `pandol` → Panadol, `rizek` → Risek, `flagil` → Flagyl. Controlled medicines are ranked lower.
+- **Rx / OTC / Controlled:** common self-care formulas (paracetamol, ibuprofen, antihistamines, ORS, vitamins…) are OTC; everything else is Rx. Narcotics and sedatives (tramadol, codeine, benzodiazepines, zolpidem…) are **controlled**: red badge, no Order button, no alternatives, and the database refuses orders for them (a trigger, not just the UI). The classification is rule-based for the demo; verify against DRAP schedules for production.
+- **Area names match the pins:** each Lahore pharmacy is named after the nearest real neighbourhood ("Near Gulberg III, Lahore"). Other cities show the city name only.
+- **Assistant guardrails (6 layers):**
+  1. Rate limit per IP: 15/min and 150/day (photo reading: 6/min and 60/day)
+  2. Input cleaning: length caps, control and invisible characters stripped, history checked
+  3. Instant block for SQL injection, prompt injection, role-play / jailbreak and secret-fishing, with no AI call
+  4. Scope check: a near-exact medicine name, or an AI classification; off-topic → polite refusal
+  5. Hardened prompt: user text is treated as data, never instructions; answers only from DATA + APP_FACTS
+  6. Output filter: no code, SQL, links or keys. The "same formula, ask your doctor or pharmacist before switching" line is added in code whenever an alternative is mentioned. Emergencies get a fixed 1122 message.
+  The AI never writes SQL: every database call is a fixed, parameterised function.
+- **Terms of Use & Privacy:** linked in the panel footer and the assistant.
+- **Dark mode:** toggle in the top bar. It follows the phone or PC setting on the first visit, then remembers your choice.

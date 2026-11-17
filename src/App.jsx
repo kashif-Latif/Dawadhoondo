@@ -7,6 +7,7 @@ import OrderSheet from "./components/OrderSheet";
 import TrackOrder from "./components/TrackOrder";
 import VoiceAgent from "./components/VoiceAgent";
 import { Icon } from "./components/ui";
+import Terms from "./components/Terms";
 import { smartSearch, searchFromFile, findNearby, getAlternatives } from "./lib/api";
 import { CITIES, getBrowserLocation } from "./lib/geo";
 
@@ -39,6 +40,20 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [snap, setSnap] = useState("peek");
   const [sheetH, setSheetH] = useState(0);
+  const [showTerms, setShowTerms] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("dd_theme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    } catch {
+      return "light";
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#08111b" : "#e9f1f3");
+    try { localStorage.setItem("dd_theme", theme); } catch { /* private mode */ }
+  }, [theme]);
 
   // GPS on load + deep links (?track=DD-XXXX, ?pa=confirmed&o=DD-XXXX from pharmacy email)
   useEffect(() => {
@@ -138,7 +153,7 @@ export default function App() {
   return (
     <div className="fixed inset-0 overflow-clip">
       {/* Map (lazy) with a soft animated backdrop while it loads */}
-      <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-sky-100 via-teal-50 to-indigo-100">
+      <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-sky-100 via-teal-50 to-indigo-100 dark:from-[#07111c] dark:via-[#0a1824] dark:to-[#0d1530]">
         <span className="blob left-[10%] top-[15%] h-72 w-72 bg-teal-300" />
         <span className="blob bottom-[10%] right-[15%] h-80 w-80 bg-sky-300" style={{ animationDelay: "-5s" }} />
         <Suspense fallback={null}>
@@ -151,9 +166,11 @@ export default function App() {
         onCity={setCity}
         onGps={() => getBrowserLocation().then(setUser).catch(() => setToast({ ok: false, text: "Location permission denied" }))}
         onTrack={() => setTrack({ no: "", phone: "" })}
+        theme={theme}
+        onTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
 
-      <Panel snap={snap} setSnap={setSnap} onHeight={setSheetH}>
+      <Panel snap={snap} setSnap={setSnap} onHeight={setSheetH} onTerms={() => setShowTerms(true)}>
         <div className="space-y-4">
           {!medicine && !loading && !upload && (
             <div className="pt-1 anim-fade-up">
@@ -185,7 +202,14 @@ export default function App() {
               onSelect={setActive}
               onOrder={setOrdering}
               loading={nearLoading}
+              controlled={!!medicine.is_controlled}
             />
+          )}
+
+          {medicine?.is_controlled && (
+            <p className="rounded-2xl bg-rose-50 px-3.5 py-3 text-[12.5px] text-rose-700">
+              <b>Controlled medicine.</b> It can't be ordered online. Buy it in person at a pharmacy with a valid prescription.
+            </p>
           )}
 
           {medicine && (
@@ -198,10 +222,12 @@ export default function App() {
 
       <VoiceAgent
         user={user}
+        onTerms={() => setShowTerms(true)}
         bottomOffset={mobile ? sheetH : 0}
         onResult={(res) => {
           setError("");
           setUpload(null);
+          if (!res.medicine) return;
           setGroups([{ query: res.medicine.product_name, corrected: null, results: res.matches?.length ? res.matches : [res.medicine] }]);
           setUsedAI(true);
           setMedicine(res.medicine);
@@ -215,6 +241,7 @@ export default function App() {
         <OrderSheet medicine={medicine} pharmacy={ordering} user={user} onClose={() => setOrdering(null)}
           onTrack={(no, phone) => { setOrdering(null); setTrack({ no, phone }); }} />
       )}
+      {showTerms && <Terms onClose={() => setShowTerms(false)} />}
       {track && <TrackOrder initialNo={track.no} initialPhone={track.phone} onClose={() => setTrack(null)} />}
 
       {toast && (

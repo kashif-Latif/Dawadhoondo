@@ -49,7 +49,7 @@ export default function SearchPanel({ onText, onFile, loading, upload }) {
           onClick={() => fileRef.current?.click()}
           className={`group flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed p-3 transition ${drag ? "border-brand-500 bg-brand-50/80" : "border-slate-900/15 bg-white/40 hover:border-brand-400 hover:bg-white/70"}`}
         >
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-100 to-brand-100 text-brand-700 transition group-hover:scale-105">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-100 to-brand-100 text-brand-700 transition group-hover:scale-105 dark:from-sky-500/20 dark:to-brand-500/20">
             <Icon name="file" />
           </div>
           <div className="min-w-0">

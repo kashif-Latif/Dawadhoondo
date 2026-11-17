@@ -1,7 +1,7 @@
 import { Icon } from "./ui";
 import { CITIES } from "../lib/geo";
 
-export default function TopBar({ user, onCity, onGps, onTrack }) {
+export default function TopBar({ user, onCity, onGps, onTrack, theme, onTheme }) {
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-3 md:p-4">
       <div className="glass pointer-events-auto flex min-w-0 items-center gap-2 rounded-2xl py-2 pl-3 pr-2 anim-fade-up">
@@ -31,13 +31,23 @@ export default function TopBar({ user, onCity, onGps, onTrack }) {
         </label>
       </div>
 
-      <button
-        onClick={onTrack}
-        className="glass pointer-events-auto flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-semibold text-slate-700 transition hover:text-brand-700 anim-fade-up"
-      >
-        <Icon name="receipt" className="h-4.5 w-4.5" />
-        <span className="hidden sm:inline">Track order</span>
-      </button>
+      <div className="pointer-events-auto flex items-center gap-2 anim-fade-up">
+        <button
+          onClick={onTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Light mode" : "Dark mode"}
+          className="glass grid h-[42px] w-[42px] place-items-center rounded-2xl text-slate-700 transition hover:text-brand-700"
+        >
+          <Icon name={theme === "dark" ? "sun" : "moon"} className="h-[18px] w-[18px]" />
+        </button>
+        <button
+          onClick={onTrack}
+          className="glass flex h-[42px] items-center gap-2 rounded-2xl px-3.5 text-[13px] font-semibold text-slate-700 transition hover:text-brand-700"
+        >
+          <Icon name="receipt" className="h-[18px] w-[18px]" />
+          <span className="hidden sm:inline">Track order</span>
+        </button>
+      </div>
     </header>
   );
 }

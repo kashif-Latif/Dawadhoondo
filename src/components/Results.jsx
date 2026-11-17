@@ -18,6 +18,8 @@ export function MatchGroups({ groups, usedAI, selectedId, onPick }) {
               <button key={m.id} onClick={() => onPick(m)}
                 className={`rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition ${selectedId === m.id ? "bg-brand-600 text-white shadow-md shadow-brand-600/30" : "bg-white/70 text-slate-700 ring-1 ring-slate-900/8 hover:bg-white"}`}>
                 {m.product_name}
+                {m.is_controlled ? <span className={`ml-1.5 rounded px-1 text-[9.5px] font-extrabold ${selectedId === m.id ? "bg-white/25 text-white" : "bg-rose-500/15 text-rose-600"}`}>CTRL</span>
+                  : m.rx_status === "Rx" ? <span className={`ml-1.5 rounded px-1 text-[9.5px] font-extrabold ${selectedId === m.id ? "bg-white/25 text-white" : "bg-amber-500/15 text-amber-700"}`}>Rx</span> : null}
               </button>
             ))}
             {!g.results.length && <span className="text-[12px] text-slate-400">No match for “{g.query}”</span>}
@@ -45,14 +47,15 @@ export function MedicineCard({ medicine, alternatives, onPick }) {
         {medicine.dosage_form && <Chip>{medicine.dosage_form}</Chip>}
         {medicine.strength && <Chip>{medicine.strength}</Chip>}
         {medicine.pack_size && <Chip>Pack {medicine.pack_size}</Chip>}
-        {medicine.rx_status === "Rx" && <Chip tone="amber">Prescription needed</Chip>}
-        {medicine.rx_status === "OTC" && <Chip tone="brand">Over the counter</Chip>}
+        {medicine.is_controlled ? <Chip tone="rose"><Icon name="lock" className="h-3 w-3" /> Controlled · in-store with prescription only</Chip>
+          : medicine.rx_status === "Rx" ? <Chip tone="amber">Rx · prescription needed</Chip>
+          : medicine.rx_status === "OTC" ? <Chip tone="brand">Over the counter</Chip> : null}
       </div>
       {medicine.company && <p className="mt-2 text-[11.5px] text-slate-400">{medicine.company}</p>}
 
-      {alternatives.length > 0 && (
+      {!medicine.is_controlled && alternatives.length > 0 && (
         <div className="mt-3 border-t border-slate-900/5 pt-3">
-          <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-slate-400">Same medicine, cheaper brands</p>
+          <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-slate-400">Same formula, cheaper brands</p>
           <div className="space-y-1">
             {alternatives.slice(0, 4).map((a) => (
               <button key={a.id} onClick={() => onPick(a)}
@@ -64,13 +67,14 @@ export function MedicineCard({ medicine, alternatives, onPick }) {
               </button>
             ))}
           </div>
+          <p className="mt-1.5 px-1 text-[11px] text-slate-400">Same formula — ask your doctor or pharmacist before switching.</p>
         </div>
       )}
     </section>
   );
 }
 
-export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onOrder, loading }) {
+export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onOrder, loading, controlled }) {
   if (loading) {
     return <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-28" />)}</div>;
   }
@@ -106,9 +110,15 @@ export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onO
                 {p.delivery && <Chip tone="brand"><Icon name="truck" className="h-3 w-3" /> Delivery</Chip>}
               </div>
               <div className="mt-3 grid grid-cols-3 gap-1.5">
-                <button onClick={(e) => { e.stopPropagation(); onOrder(p); }} className="btn-primary rounded-xl py-2 text-[12.5px]">
-                  Order
-                </button>
+                {controlled ? (
+                  <span title="Controlled medicine: buy in person with a prescription" className="flex items-center justify-center gap-1 rounded-xl bg-rose-500/10 py-2 text-[11.5px] font-semibold text-rose-600">
+                    <Icon name="lock" className="h-3.5 w-3.5" /> In-store
+                  </span>
+                ) : (
+                  <button onClick={(e) => { e.stopPropagation(); onOrder(p); }} className="btn-primary rounded-xl py-2 text-[12.5px]">
+                    Order
+                  </button>
+                )}
                 <a href={links.uber} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
                   className="btn-soft flex items-center justify-center gap-1 rounded-xl py-2 text-[12.5px] text-slate-700">
                   <Icon name="car" className="h-4 w-4" /> Ride
