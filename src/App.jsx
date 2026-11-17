@@ -5,7 +5,7 @@ import PharmacyList from "./components/PharmacyList";
 import OrderModal from "./components/OrderModal";
 import VoiceAgent from "./components/VoiceAgent";
 import { smartSearch, searchFromFile, findNearby, getAlternatives } from "./lib/api";
-import { CITIES, getBrowserLocation, fmtPKR } from "./lib/geo";
+import { CITIES, getBrowserLocation, fmtPKR, fmtUnit } from "./lib/geo";
 
 const DEFAULT_USER = { ...CITIES[0], label: "Lahore (default)" };
 
@@ -137,7 +137,7 @@ export default function App() {
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {alternatives.map((a) => (
                       <button key={a.id} onClick={() => pickMedicine(a)} className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] ring-1 ring-slate-700 hover:ring-emerald-500">
-                        {a.product_name} · {fmtPKR(a.mrp_pkr)}{a.price_per_unit ? ` (${fmtPKR(a.price_per_unit)}/unit)` : ""}
+                        {a.product_name} · {fmtPKR(a.mrp_pkr)}{a.price_per_unit ? ` (${fmtUnit(a.price_per_unit)}/unit)` : ""}
                       </button>
                     ))}
                   </div>

@@ -33,3 +33,4 @@ export const rideLinks = (from, to) => ({
 
 export const fmtKm = (km) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`);
 export const fmtPKR = (n) => (n == null ? "—" : `Rs ${Number(n).toLocaleString("en-PK", { maximumFractionDigits: 0 })}`);
+export const fmtUnit = (n) => (n == null ? "—" : `Rs ${Number(n).toLocaleString("en-PK", { minimumFractionDigits: n < 10 ? 2 : 0, maximumFractionDigits: n < 10 ? 2 : 0 })}`);

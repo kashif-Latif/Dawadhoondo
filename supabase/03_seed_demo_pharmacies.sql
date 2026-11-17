@@ -12,7 +12,7 @@ delete from public.pharmacies where is_demo;
 with cities(city, lat, lng, n, spread, areas) as (
   values
   ('Lahore',     31.5204, 74.3587, 30, 0.12, array['Gulberg','DHA','Johar Town','Model Town','Liberty','Iqbal Town','Township','Wapda Town','Bahria Town','Shadman','Garden Town','Faisal Town']),
-  ('Karachi',    24.8607, 67.0011, 30, 0.16, array['Clifton','DHA','Gulshan-e-Iqbal','North Nazimabad','PECHS','Saddar','Gulistan-e-Johar','Tariq Road','Korangi','Bahadurabad']),
+  ('Karachi',    24.9200, 67.0750, 30, 0.09, array['Clifton','DHA','Gulshan-e-Iqbal','North Nazimabad','PECHS','Saddar','Gulistan-e-Johar','Tariq Road','Korangi','Bahadurabad']),
   ('Islamabad',  33.6844, 73.0479, 15, 0.08, array['F-6','F-7','F-10','G-9','G-11','I-8','Blue Area','E-11','DHA Phase 2']),
   ('Rawalpindi', 33.5651, 73.0169, 10, 0.07, array['Saddar','Satellite Town','Bahria Town','Chaklala','Committee Chowk','Westridge']),
   ('Faisalabad', 31.4504, 73.1350, 10, 0.07, array['D Ground','Madina Town','Peoples Colony','Susan Road','Jinnah Colony','Gulberg']),

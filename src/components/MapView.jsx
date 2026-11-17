@@ -118,7 +118,12 @@ export default function MapView({ user, pharmacies, activeId, onSelect }) {
     else map.once("idle", draw);
   }, [activeId, pharmacies, user]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  // Inline size: maplibre-gl.css sets .maplibregl-map{position:relative}, which beats Tailwind v4's layered utilities.
+  return (
+    <div className="absolute inset-0">
+      <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
+    </div>
+  );
 }
 
 function add3DBuildings(map) {

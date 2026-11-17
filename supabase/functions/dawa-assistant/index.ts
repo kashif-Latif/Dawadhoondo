@@ -4,7 +4,7 @@
 //
 // Deploy:  supabase functions deploy dawa-assistant --no-verify-jwt
 // Secret:  GROQ_API_KEY (preferred, fast + generous free tier)  OR  GEMINI_API_KEY (fallback)
-//          Optional: GROQ_MODEL (default llama-3.3-70b-versatile), GEMINI_MODEL
+//          Optional: GROQ_MODEL (auto-picked if unset), GEMINI_MODEL
 // SUPABASE_URL and SUPABASE_ANON_KEY are provided automatically by Supabase.
 
 const CORS = {
@@ -18,7 +18,11 @@ const json = (b: unknown, s = 200) =>
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
-const GROQ_MODEL = Deno.env.get("GROQ_MODEL") ?? "llama-3.3-70b-versatile";
+const GROQ_MODEL_ENV = Deno.env.get("GROQ_MODEL");
+// Groq retires models often, so pick the first available one from this list at runtime.
+const GROQ_PREFERRED = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile",
+  "moonshotai/kimi-k2-instruct", "qwen/qwen3-32b", "llama-3.1-8b-instant"];
+let groqModel: string | null = null;
 const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
 const MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 
@@ -39,27 +43,54 @@ async function rpc(fn: string, args: Record<string, unknown>) {
   return r.json();
 }
 
-// One entry point for the LLM: Groq if its key is set, otherwise Gemini.
+// One entry point for the LLM: Groq first (if key set), Gemini as fallback.
 async function gemini(prompt: string, jsonOut = false): Promise<string> {
-  if (GROQ_KEY) return groq(prompt, jsonOut);
+  if (GROQ_KEY) {
+    try {
+      return await groq(prompt, jsonOut);
+    } catch (e) {
+      console.error("Groq failed:", String(e));
+      if (!GEMINI_KEY) throw e;
+    }
+  }
   return geminiCall(prompt, jsonOut);
 }
 
+async function pickGroqModel(): Promise<string> {
+  if (groqModel) return groqModel;
+  if (GROQ_MODEL_ENV) return (groqModel = GROQ_MODEL_ENV);
+  const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${GROQ_KEY}` } });
+  if (!r.ok) throw new Error(`Groq models ${r.status}`);
+  const ids: string[] = ((await r.json()).data ?? []).filter((m: any) => m.active !== false).map((m: any) => m.id);
+  const textIds = ids.filter((id) => !/whisper|tts|guard|playai|orpheus|compound|prompt/i.test(id));
+  groqModel = GROQ_PREFERRED.find((m) => ids.includes(m)) ?? textIds[0];
+  if (!groqModel) throw new Error("No Groq text model available");
+  console.log("Using Groq model:", groqModel);
+  return groqModel;
+}
+
 async function groq(prompt: string, jsonOut: boolean) {
+  const model = await pickGroqModel();
+  const isReasoning = /gpt-oss|qwen3/i.test(model);
   const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_KEY}` },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model,
       temperature: 0.2,
-      max_tokens: 400,
+      max_tokens: isReasoning ? 1500 : 500,
+      ...(isReasoning ? { reasoning_effort: /gpt-oss/i.test(model) ? "low" : "none" } : {}),
       messages: [{ role: "user", content: prompt }],
       ...(jsonOut ? { response_format: { type: "json_object" } } : {}),
     }),
   });
-  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  if (!r.ok) {
+    if (r.status === 404) groqModel = null; // model retired: re-pick next time
+    throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  }
   const d = await r.json();
-  return d?.choices?.[0]?.message?.content ?? "";
+  const text = d?.choices?.[0]?.message?.content ?? "";
+  return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
 
 async function geminiCall(prompt: string, jsonOut = false) {

@@ -24,7 +24,10 @@ export default function VoiceAgent({ user, onResult }) {
   useEffect(() => {
     window.speechSynthesis?.getVoices(); // warm up voice list
   }, []);
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [history, busy]);
+  // Braces matter: Chrome 155+ scrollIntoView returns a Promise, which React would try to call as a cleanup.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [history, busy]);
 
   const speak = (msg) => {
     if (!window.speechSynthesis) return;
