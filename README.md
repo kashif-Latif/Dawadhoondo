@@ -125,3 +125,34 @@ Every push to `main` redeploys automatically. HTTPS is required for the micropho
 
 ## Already ran v2 SQL?
 Run `supabase/04_patch_alternatives.sql` once. It stops the same brand repeating in alternatives.
+
+
+---
+
+## v6 — Ordering with couriers, confirmation emails, tracking (NEW)
+
+### 1. Database (SQL Editor)
+Run `supabase/07_orders_v2.sql` once. It adds courier quotes, order numbers (`DD-XXXXXX`), customer email, the status timeline and order tracking.
+
+### 2. Emails with Brevo (free, 300/day, no domain needed)
+1. Sign up at **brevo.com** → **Settings → Senders & IP → Senders → Add a sender** → use your Gmail → click the verification link Brevo emails you.
+2. **Settings → SMTP & API → API Keys → Generate a new API key** → copy it (`xkeysib-…`).
+3. Supabase → **Edge Functions → Secrets**, add:
+   | Name | Value |
+   |---|---|
+   | `BREVO_API_KEY` | `xkeysib-…` |
+   | `MAIL_FROM` | the Gmail you verified in Brevo |
+   | `PHARMACY_INBOX` | the email that receives pharmacy orders (demo pharmacies have none, e.g. your team Gmail) |
+   | `SITE_URL` | `https://dawadhoondo123.vercel.app` |
+
+### 3. Deploy 2 new functions (JWT verification OFF on both)
+- `order-notify`: emails the customer confirmation, and emails the pharmacy the new order with **Confirm / Out for delivery / Delivered / Cancel** buttons
+- `order-action`: runs when the pharmacy clicks a button. It updates the order, emails the customer, and opens the website with a message.
+
+### Order flow
+Customer picks a pharmacy → **Order** → chooses Pickup (free), Pharmacy rider, Bykea, TCS same-day or Leopards overnight (fee calculated on the server from the distance) → name, phone, email, address → **Place order** → gets order number `DD-XXXXXX` + email.
+The pharmacy gets an email and clicks **Confirm**, then **Out for delivery**, then **Delivered**. Each step emails the customer and updates **Track order** live (the tracking page refreshes every 8 s).
+Tracking needs the order number + the same phone number, so strangers can't look up orders.
+
+### Demo tip
+Put your own phone's email as `PHARMACY_INBOX`. During the demo, place an order on the laptop, open the pharmacy email on your phone, tap **Confirm**, and the laptop's tracking screen updates by itself.

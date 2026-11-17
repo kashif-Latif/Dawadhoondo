@@ -1,98 +1,112 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { PAKISTAN_CENTER } from "../lib/geo";
 
-// Free vector tiles, no API key. Includes buildings for 3D extrusion.
-const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+// Light, minimal vector style (fewer layers = faster). Free, no API key.
+const STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
+const isMobile = () => window.matchMedia("(max-width: 767px)").matches;
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export default function MapView({ user, pharmacies, activeId, onSelect }) {
+export default function MapView({ user, pharmacies, activeId, onSelect, padding }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const userMarkerRef = useRef(null);
-  const spinRef = useRef(true);
+  const spinRef = useRef(false);
+  const paddingRef = useRef(padding);
+  paddingRef.current = padding;
 
-  // Init: 3D globe that spins, then flies to Pakistan
   useEffect(() => {
+    const mobile = isMobile();
+    const animate = !mobile && !reducedMotion();
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: STYLE_URL,
-      center: [40, 20],
-      zoom: 1.4,
+      center: animate ? [45, 22] : PAKISTAN_CENTER,
+      zoom: animate ? 1.6 : 4.4,
+      pitch: 0,
+      pixelRatio: Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2),
+      fadeDuration: 0,
+      maxPitch: 70,
       attributionControl: { compact: true },
+      cooperativeGestures: false,
     });
     mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showZoom: !mobile }), "bottom-right");
 
     map.on("style.load", () => {
-      try { map.setProjection({ type: "globe" }); } catch { /* older engine: flat map */ }
-      try {
-        map.setSky({ "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0] });
-      } catch { /* optional */ }
+      if (animate) {
+        try { map.setProjection({ type: "globe" }); } catch { /* flat fallback */ }
+      }
       add3DBuildings(map);
     });
 
-    const spin = () => {
-      if (!spinRef.current || !mapRef.current) return;
-      const c = map.getCenter();
-      map.easeTo({ center: [c.lng + 12, c.lat], duration: 1000, easing: (t) => t });
-    };
-    map.on("moveend", spin);
-    map.on("mousedown", () => (spinRef.current = false));
-    map.on("touchstart", () => (spinRef.current = false));
-    map.once("load", () => {
-      spin();
-      setTimeout(() => {
-        spinRef.current = false;
-        map.flyTo({ center: PAKISTAN_CENTER, zoom: 4.6, pitch: 30, duration: 4000, essential: true });
-      }, 2500);
-    });
-
+    if (animate) {
+      spinRef.current = true;
+      const spin = () => {
+        if (!spinRef.current) return;
+        const c = map.getCenter();
+        map.easeTo({ center: [c.lng + 10, c.lat], duration: 1000, easing: (t) => t });
+      };
+      map.on("moveend", spin);
+      const stop = () => (spinRef.current = false);
+      map.on("mousedown", stop);
+      map.on("touchstart", stop);
+      map.once("load", () => {
+        spin();
+        setTimeout(() => {
+          spinRef.current = false;
+          map.flyTo({ center: PAKISTAN_CENTER, zoom: 4.6, pitch: 25, duration: 3200, essential: true });
+        }, 1800);
+      });
+    }
     return () => map.remove();
   }, []);
 
-  // User marker + fly into 3D street view
+  // User location marker
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !user) return;
-    spinRef.current = false;
     userMarkerRef.current?.remove();
     const el = document.createElement("div");
     el.className = "user-marker";
-    userMarkerRef.current = new maplibregl.Marker({ element: el })
-      .setLngLat([user.lng, user.lat])
-      .setPopup(new maplibregl.Popup({ offset: 12 }).setText(user.label ?? "You"))
-      .addTo(map);
+    userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat([user.lng, user.lat]).addTo(map);
   }, [user]);
 
-  // Pharmacy markers + fit to results
+  // Pharmacy markers + fit
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    spinRef.current = false;
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
     if (!pharmacies?.length) return;
 
-    pharmacies.forEach((p) => {
-      const el = document.createElement("div");
-      el.className = "pharmacy-marker" + (p.pharmacy_id === activeId ? " active" : "");
+    const place = () => pharmacies.forEach((p, i) => {
+      const el = document.createElement("button");
+      el.className = "pharmacy-marker";
+      el.style.animationDelay = `${i * 40}ms`;
+      el.setAttribute("aria-label", p.name);
       el.textContent = "💊";
-      el.title = p.name;
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         onSelect?.(p);
       });
       markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
     });
+    // Only place pins once the map can project coordinates (avoids pins stuck in a corner).
+    if (map.loaded()) place();
+    else map.once("load", place);
 
     const bounds = new maplibregl.LngLatBounds();
     pharmacies.slice(0, 8).forEach((p) => bounds.extend([p.lng, p.lat]));
     if (user) bounds.extend([user.lng, user.lat]);
-    map.fitBounds(bounds, { padding: { top: 80, bottom: 80, left: 460, right: 80 }, pitch: 55, bearing: -20, maxZoom: 15, duration: 3000 });
+    map.fitBounds(bounds, { padding: paddingRef.current, pitch: 50, bearing: -15, maxZoom: 15, duration: 1800 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pharmacies]);
 
-  // Highlight active pharmacy + draw route line
+  // Active pharmacy: highlight + route line
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -109,10 +123,13 @@ export default function MapView({ user, pharmacies, activeId, onSelect }) {
         map.addSource("route", { type: "geojson", data });
         map.addLayer({
           id: "route", type: "line", source: "route",
-          paint: { "line-color": "#f59e0b", "line-width": 4, "line-dasharray": [2, 1.5] },
+          layout: { "line-cap": "round" },
+          paint: { "line-color": "#0d9488", "line-width": 4, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
         });
       }
-      if (active) map.flyTo({ center: [active.lng, active.lat], zoom: 16, pitch: 60, bearing: -30, duration: 2000 });
+      if (active) {
+        map.flyTo({ center: [active.lng, active.lat], zoom: 16, pitch: 60, bearing: -25, duration: 1500, padding: paddingRef.current });
+      }
     };
     if (map.isStyleLoaded()) draw();
     else map.once("idle", draw);
@@ -127,20 +144,22 @@ export default function MapView({ user, pharmacies, activeId, onSelect }) {
 }
 
 function add3DBuildings(map) {
-  if (map.getLayer("building-3d") || map.getLayer("dd-buildings-3d")) return;
-  const source = Object.keys(map.getStyle().sources).find((s) => s === "openmaptiles") ?? null;
-  if (!source) return;
-  map.addLayer({
-    id: "dd-buildings-3d",
-    type: "fill-extrusion",
-    source,
-    "source-layer": "building",
-    minzoom: 14,
-    paint: {
-      "fill-extrusion-color": "#cbd5e1",
-      "fill-extrusion-height": ["coalesce", ["get", "render_height"], 10],
-      "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-      "fill-extrusion-opacity": 0.75,
-    },
-  });
+  if (map.getLayer("dd-buildings-3d")) return;
+  const src = map.getSource("openmaptiles") ? "openmaptiles" : null;
+  if (!src) return;
+  try {
+    map.addLayer({
+      id: "dd-buildings-3d",
+      type: "fill-extrusion",
+      source: src,
+      "source-layer": "building",
+      minzoom: 14.5,
+      paint: {
+        "fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 8], 0, "#e2e8f0", 60, "#cbd5e1"],
+        "fill-extrusion-height": ["coalesce", ["get", "render_height"], 8],
+        "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+        "fill-extrusion-opacity": 0.8,
+      },
+    });
+  } catch { /* style without buildings */ }
 }

@@ -34,12 +34,57 @@ export async function smartSearch(text) {
 }
 
 // Image / PDF prescription → AI extracts names → DB search each.
-export async function searchFromFile(file) {
+// onStage(0..3) drives the progress UI: 0 reading file, 1 AI reading, 2 matching, 3 done.
+export async function searchFromFile(file, onStage = () => {}) {
   if (file.size > 5 * 1024 * 1024) throw new Error("File too large (max 5 MB)");
+  onStage(0);
   const data = await fileToBase64(file);
+  onStage(1);
   const names = await aiExtract({ file: { mimeType: file.type, data } });
-  if (!names.length) throw new Error("No medicine names found in the file");
-  return { groups: await searchNames(names), usedAI: true };
+  if (!names.length) throw new Error("Couldn't find any medicine names in this file. Try a clearer photo.");
+  onStage(2);
+  const groups = await searchNames(names);
+  onStage(3);
+  return { groups, usedAI: true, extracted: names };
+}
+
+export async function courierQuotes(pharmacyId, lat, lng) {
+  const { data, error } = await supabase.rpc("courier_quotes", { p_pharmacy_id: pharmacyId, p_lat: lat, p_lng: lng });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function placeOrderV2(o) {
+  const { data, error } = await supabase.rpc("place_order_v2", {
+    p_pharmacy_id: o.pharmacyId,
+    p_medicine_id: o.medicineId,
+    p_qty: o.qty,
+    p_name: o.name,
+    p_phone: o.phone,
+    p_email: o.email,
+    p_address: o.address,
+    p_courier: o.courier,
+    p_lat: o.lat,
+    p_lng: o.lng,
+  });
+  if (error) throw new Error(error.message);
+  const order = data?.[0];
+  // Fire-and-forget confirmation emails (customer + pharmacy)
+  let emailed = null;
+  try {
+    const { data: n } = await supabase.functions.invoke("order-notify", { body: { order_id: order.order_id } });
+    emailed = n;
+  } catch (e) {
+    console.warn("Email not sent:", e.message);
+  }
+  return { ...order, emailed };
+}
+
+export async function getOrder(orderNo, phone) {
+  const { data, error } = await supabase.rpc("get_order", { p_order_no: orderNo, p_phone: phone });
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("No order found with this number and phone");
+  return data[0];
 }
 
 async function searchNames(names) {

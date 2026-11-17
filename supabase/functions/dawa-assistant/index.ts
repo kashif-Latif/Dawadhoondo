@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
         name: p.name, area: p.address, distance_km: Number(p.distance_km.toFixed(1)),
         price_pkr: p.price, stock: p.stock, open_24h: p.open_24h, delivery: p.delivery,
       })),
-      cheaper_same_formula: alternatives.map((a: any) => ({ name: a.product_name, pack: a.pack_size, price_pkr: a.mrp_pkr })),
+      cheaper_same_formula: alternatives.map((a: any) => ({ name: a.product_name, strength: a.strength, pack: a.pack_size, price_pkr: a.mrp_pkr })),
     };
 
     const langRule = lang === "ur"
@@ -185,7 +185,8 @@ RULES:
 - If DATA has no match, say you could not find it and ask them to spell it or upload a photo of the box/prescription.
 - Do NOT diagnose, and do NOT give doses or tell anyone to start/stop a medicine. For dosage or side effects say: "please ask your doctor or pharmacist".
 - If the user describes an emergency (chest pain, can't breathe, overdose, unconscious, severe bleeding), tell them to call 1122 immediately.
-- Prices are DRAP maximum retail prices or pharmacy prices in PKR. Pharmacy stock is demo data.
+- Prices are DRAP maximum retail prices or pharmacy prices in Pakistani rupees. ALWAYS write prices as "Rs 279" (or "279 روپے" in Urdu). Never use ₹ or INR.
+- When suggesting a cheaper alternative, mention if its strength differs from what the user asked for.
 - This answer will be spoken aloud: 2-4 short sentences, no lists, no markdown.
 - ${langRule}
 
@@ -194,7 +195,7 @@ DATA: ${JSON.stringify(context)}
 ${convo ? `CONVERSATION SO FAR:\n${convo}\n` : ""}User: ${q}
 Assistant:`;
 
-    const answer = (await gemini(prompt)).trim();
+    const answer = (await gemini(prompt)).trim().replace(/₹\s?/g, "Rs ").replace(/\bINR\b/g, "PKR");
     return json({ answer, medicine: top ?? null, nearby: near, alternatives, matches: matches.slice(0, 6) });
   } catch (e) {
     console.error(e);
