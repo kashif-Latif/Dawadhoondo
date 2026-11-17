@@ -339,6 +339,7 @@ export default function App() {
                   onOrder={setOrdering}
                   loading={nearLoading}
                   controlled={!!medicine.is_controlled}
+                  medicine={medicine}
                 />
               )}
 

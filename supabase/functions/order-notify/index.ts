@@ -56,7 +56,7 @@ function summary(o: any) {
   const row = (k: string, v: string) => `<tr><td style="padding:6px 0;color:#64748b">${k}</td><td style="padding:6px 0;text-align:right;font-weight:600">${v}</td></tr>`;
   return `<table style="width:100%;border-collapse:collapse">
     ${row("Order no.", esc(o.order_no))}
-    ${row("Medicine", `${esc(o.medicines.product_name)} × ${o.qty}`)}
+    ${row("Medicine", `${esc(o.medicines.product_name)} · ${esc(o.unit_label ?? `× ${o.qty}`)}`)}
     ${row("Pharmacy", `${esc(o.pharmacies.name)}, ${esc(o.pharmacies.address)}`)}
     ${row("Delivery", `${esc(o.courier)} · ${esc(o.eta_text)}`)}
     ${row("Subtotal", rs(o.subtotal))}
@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
     if (pharmacyTo) {
       const act = (a: string) => `${SB_URL}/functions/v1/order-action?id=${o.id}&t=${o.pharmacy_token}&a=${a}`;
       try {
-        await sendMail(pharmacyTo, o.pharmacies.name, `New order ${o.order_no} — ${o.medicines.product_name} × ${o.qty}`,
+        await sendMail(pharmacyTo, o.pharmacies.name, `New order ${o.order_no} — ${o.medicines.product_name} · ${o.unit_label ?? `× ${o.qty}`}`,
           shell(`New order for ${o.pharmacies.name}`, `
             <p><b>Customer:</b> ${esc(o.customer_name)} · ${esc(o.phone)}${o.email ? ` · ${esc(o.email)}` : ""}<br/>
             <b>${o.mode === "pickup" ? "Pickup" : "Deliver to"}:</b> ${o.mode === "pickup" ? "Customer will collect" : esc(o.address)}</p>

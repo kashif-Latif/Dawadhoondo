@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { Icon, Spinner, Chip } from "./ui";
 import { courierQuotes, placeOrderV2 } from "../lib/api";
-import { fmtPKR } from "../lib/geo";
+import { fmtPKR, fmtUnit, packPricing } from "../lib/geo";
 
 const COURIER_ICON = { pickup: "store", rider: "bike", bykea: "bike", tcs: "truck", leopards: "box" };
 const SAVED = "dd_contact";
@@ -22,6 +22,8 @@ export default function OrderSheet({ medicine, pharmacy, user, onClose, onTrack 
   const [form, setForm] = useState({
     qty: 1, courier: "", name: saved.name ?? "", phone: saved.phone ?? "", email: saved.email ?? "", address: saved.address ?? "",
   });
+  const pp = packPricing(medicine, pharmacy.price);
+  const [pack, setPack] = useState(pp.hasStrip ? "strip" : "pack");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(null);
@@ -38,10 +40,12 @@ export default function OrderSheet({ medicine, pharmacy, user, onClose, onTrack 
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const quote = quotes?.find((q) => q.code === form.courier);
-  const subtotal = (pharmacy.price ?? 0) * form.qty;
+  const unitPrice = pack === "strip" && pp.hasStrip ? Math.round(pp.stripPrice * 100) / 100 : Number(pharmacy.price ?? 0);
+  const subtotal = unitPrice * form.qty;
+  const unitText = pack === "strip" && pp.hasStrip ? `${form.qty} ${form.qty === 1 ? "strip" : "strips"} of ${pp.strip}` : `${form.qty} × ${pp.packLabel}`;
   const fee = Number(quote?.fee ?? 0);
   const isPickup = form.courier === "pickup";
-  const maxQty = Math.min(20, pharmacy.stock);
+  const maxQty = pack === "strip" && pp.hasStrip ? Math.min(20, Math.floor((pharmacy.stock * medicine.pack_units) / pp.strip)) : Math.min(20, pharmacy.stock);
 
   const validDetails =
     form.name.trim().length >= 2 &&
@@ -56,7 +60,7 @@ export default function OrderSheet({ medicine, pharmacy, user, onClose, onTrack 
       const res = await placeOrderV2({
         pharmacyId: pharmacy.pharmacy_id, medicineId: medicine.id, qty: Number(form.qty),
         name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(), address: form.address.trim(),
-        courier: form.courier, lat: user.lat, lng: user.lng,
+        courier: form.courier, lat: user.lat, lng: user.lng, pack,
       });
       try {
         localStorage.setItem(SAVED, JSON.stringify({ name: form.name, phone: form.phone, email: form.email, address: form.address }));
@@ -85,7 +89,7 @@ export default function OrderSheet({ medicine, pharmacy, user, onClose, onTrack 
           <p className="mt-3 text-[13px] text-slate-500">Your order number</p>
           <p className="font-mono text-2xl font-extrabold tracking-wider">{done.order_no}</p>
           <p className="mt-2 max-w-xs text-[13px] text-slate-600">
-            {form.qty} × {medicine.product_name} from <b>{pharmacy.name}</b> · {done.courier_name} · {done.eta_text}
+            {done.unit_label ?? unitText} · {medicine.product_name} from <b>{pharmacy.name}</b> · {done.courier_name} · {done.eta_text}
           </p>
           <p className="mt-1 text-[15px] font-bold text-brand-700">{fmtPKR(done.total)} cash on delivery</p>
           <div className="mt-4 w-full space-y-1.5 text-left">
@@ -145,10 +149,21 @@ export default function OrderSheet({ medicine, pharmacy, user, onClose, onTrack 
 
       {step === 0 && (
         <div className="space-y-4 anim-fade-up">
+          {pp.hasStrip && (
+            <div className="grid grid-cols-2 gap-2">
+              {[["strip", `Strip of ${pp.strip}`, fmtUnit(pp.stripPrice)], ["pack", pp.packLabel.replace(/^pack/, "Full pack"), fmtPKR(pp.packPrice)]].map(([k, label, price]) => (
+                <button key={k} onClick={() => { setPack(k); setForm((f) => ({ ...f, qty: 1 })); }}
+                  className={`rounded-2xl p-3 text-left transition ${pack === k ? "bg-white ring-2 ring-brand-500 shadow-md shadow-brand-600/10" : "bg-white/55 ring-1 ring-slate-900/6 hover:bg-white"}`}>
+                  <span className="block text-[13px] font-semibold">{label}</span>
+                  <span className="block text-[15px] font-extrabold text-brand-700">{price}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-2xl bg-white/60 p-3">
             <div>
               <p className="text-[13px] font-semibold">Quantity</p>
-              <p className="text-[11.5px] text-slate-500">{fmtPKR(pharmacy.price)} each · {pharmacy.stock} in stock</p>
+              <p className="text-[11.5px] text-slate-500">{pack === "strip" && pp.hasStrip ? `${fmtUnit(pp.stripPrice)} per strip` : `${fmtPKR(pharmacy.price)} per ${pp.packLabel}`} · in stock</p>
             </div>
             <div className="flex items-center gap-1 rounded-xl bg-white p-1 ring-1 ring-slate-900/8">
               <button onClick={() => setForm((f) => ({ ...f, qty: Math.max(1, f.qty - 1) }))} className="grid h-8 w-8 place-items-center rounded-lg text-lg font-bold hover:bg-slate-100">−</button>
@@ -206,7 +221,7 @@ export default function OrderSheet({ medicine, pharmacy, user, onClose, onTrack 
       {step === 2 && (
         <div className="space-y-3 anim-fade-up">
           <div className="rounded-2xl bg-white/70 p-3.5 text-[13px]">
-            <Row k="Medicine" v={`${medicine.product_name} × ${form.qty}`} />
+            <Row k="Medicine" v={`${medicine.product_name} · ${unitText}`} />
             <Row k="Pharmacy" v={pharmacy.name} />
             <Row k={isPickup ? "Pickup" : "Deliver to"} v={isPickup ? pharmacy.address : form.address} />
             <Row k="Method" v={`${quote?.name} · ${quote?.eta_text}`} />

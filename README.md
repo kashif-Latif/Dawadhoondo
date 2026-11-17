@@ -187,7 +187,7 @@ Put your own phone's email as `PHARMACY_INBOX`. During the demo, place an order 
 
 ### Deploy
 1. Push the code. Vercel redeploys.
-2. SQL Editor → run `supabase/09_doctors_prices.sql`. It sets every pharmacy price to the official DRAP price, adds 51 demo hospitals and clinics, 192 demo doctors in 16 specialties, schedules and appointments.
+2. SQL Editor → run `supabase/09_doctors_prices.sql`, then `10_strip_prices.sql`. It sets every pharmacy price to the official DRAP price, adds 51 demo hospitals and clinics, 192 demo doctors in 16 specialties, schedules and appointments.
 3. Re-deploy **`dawa-assistant`** and **`order-notify`** (JWT verification OFF).
 
 ### What changed

@@ -60,7 +60,7 @@ export default function TrackOrder({ initialNo = "", initialPhone = "", onClose 
       ) : (
         <div className="space-y-4 pt-1 anim-fade-up">
           <div className="rounded-2xl bg-white/70 p-3.5">
-            <p className="text-[15px] font-bold">{order.medicine} × {order.qty}</p>
+            <p className="text-[15px] font-bold">{order.medicine} · {order.unit_label ?? `× ${order.qty}`}</p>
             <p className="text-[12.5px] text-slate-500">{order.pharmacy} · {order.pharmacy_address}</p>
             <p className="mt-1 text-[13px]"><b className="text-brand-700">{fmtPKR(order.total)}</b> · {order.courier} · {order.eta_text}</p>
           </div>

@@ -66,6 +66,7 @@ export async function placeOrderV2(o) {
     p_courier: o.courier,
     p_lat: o.lat,
     p_lng: o.lng,
+    p_pack: o.pack ?? "pack",
   });
   if (error) throw new Error(error.message);
   const order = data?.[0];

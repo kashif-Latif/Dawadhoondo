@@ -1,5 +1,5 @@
 import { Icon, Chip } from "./ui";
-import { fmtKm, fmtPKR, fmtUnit, rideLinks } from "../lib/geo";
+import { fmtKm, fmtPKR, fmtUnit, rideLinks, packPricing } from "../lib/geo";
 
 export function MatchGroups({ groups, usedAI, selectedId, onPick }) {
   if (!groups.length) return null;
@@ -30,6 +30,25 @@ export function MatchGroups({ groups, usedAI, selectedId, onPick }) {
   );
 }
 
+function PriceBlock({ medicine }) {
+  const pp = packPricing(medicine);
+  if (pp.hasStrip) {
+    return (
+      <div className="shrink-0 text-right">
+        <p className="text-[19px] font-extrabold leading-none text-brand-700">{fmtUnit(pp.stripPrice)}</p>
+        <p className="mt-0.5 text-[11px] font-semibold text-slate-500">per strip of {pp.strip}</p>
+        <p className="text-[10.5px] text-slate-400">{fmtUnit(pp.perUnit)}/{pp.word} · {pp.packLabel}: {fmtPKR(pp.packPrice)}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0 text-right">
+      <p className="text-[19px] font-extrabold leading-none text-brand-700">{fmtPKR(medicine.mrp_pkr)}</p>
+      <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{medicine.pack_size ? `per ${pp.packLabel}` : "DRAP price"}</p>
+    </div>
+  );
+}
+
 export function MedicineCard({ medicine, alternatives, onPick }) {
   return (
     <section className="glass-tile rounded-2xl p-4 anim-fade-up">
@@ -38,10 +57,7 @@ export function MedicineCard({ medicine, alternatives, onPick }) {
           <h2 className="text-[17px] font-bold leading-tight">{medicine.product_name}</h2>
           <p className="mt-0.5 text-[13px] text-slate-500">{medicine.generic_composition}</p>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">DRAP max</p>
-          <p className="text-[17px] font-extrabold text-brand-700">{fmtPKR(medicine.mrp_pkr)}</p>
-        </div>
+        <PriceBlock medicine={medicine} />
       </div>
       <div className="mt-2.5 flex flex-wrap gap-1.5">
         {medicine.dosage_form && <Chip>{medicine.dosage_form}</Chip>}
@@ -74,7 +90,7 @@ export function MedicineCard({ medicine, alternatives, onPick }) {
   );
 }
 
-export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onOrder, loading, controlled }) {
+export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onOrder, loading, controlled, medicine }) {
   if (loading) {
     return <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-28" />)}</div>;
   }
@@ -103,8 +119,20 @@ export function PharmacyList({ pharmacies, radius, user, activeId, onSelect, onO
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[15px] font-extrabold">{fmtPKR(p.price)}</span>
-                <span className="text-[10.5px] font-semibold text-slate-400">DRAP price</span>
+                {(() => {
+                  const pp = packPricing(medicine, p.price);
+                  return pp.hasStrip ? (
+                    <>
+                      <span className="text-[15px] font-extrabold">{fmtUnit(pp.stripPrice)}</span>
+                      <span className="text-[10.5px] font-semibold text-slate-400">/ strip of {pp.strip} · {fmtPKR(pp.packPrice)} {pp.packLabel}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[15px] font-extrabold">{fmtPKR(p.price)}</span>
+                      <span className="text-[10.5px] font-semibold text-slate-400">DRAP price</span>
+                    </>
+                  );
+                })()}
                 <Chip tone={p.stock < 10 ? "amber" : "brand"}>{p.stock < 10 ? `Only ${p.stock} left` : "In stock"}</Chip>
                 <Chip><Icon name="star" className="h-3 w-3" /> {p.rating}</Chip>
                 {p.open_24h && <Chip tone="sky">24/7</Chip>}

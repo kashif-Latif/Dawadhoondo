@@ -90,3 +90,21 @@ export const fmtSlot = (t) => {
   if (sameDay(d, tomorrow)) return `Tomorrow ${time}`;
   return `${d.toLocaleDateString("en-PK", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Karachi" })} ${time}`;
 };
+
+// How people actually buy: by the strip. Returns display info for a medicine (+ optional pharmacy pack price).
+export function packPricing(m, packPrice = m?.mrp_pkr) {
+  const units = m?.pack_units;
+  const strip = m?.strip_size;
+  const word = m?.dosage_form === "Capsule" ? "capsule" : "tablet";
+  const perUnit = units ? Number(packPrice) / units : null;
+  const hasStrip = !!(strip && units && units > strip && perUnit);
+  return {
+    hasStrip,
+    strip,
+    word,
+    perUnit,
+    stripPrice: hasStrip ? perUnit * strip : null,
+    packPrice: Number(packPrice),
+    packLabel: m?.pack_size ? `pack of ${m.pack_size.replace(/'?s$/i, "")}` : "pack",
+  };
+}
