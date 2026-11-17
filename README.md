@@ -1,73 +1,114 @@
-# DawaDhoondo · دوا ڈھونڈو
+# 💊 DawaDhoondo — find any medicine near you in Pakistan
 
-**Know which pharmacy near you has your medicine, before you leave home.**
+Type a medicine (even misspelled: `panadoll`, `augmantin`), upload a prescription photo/PDF, or **ask by voice in English or Urdu**.
+The app finds the medicine among **21,957 DRAP-registered Pakistani medicines**. A 3D globe flies to your city and shows nearby pharmacies (5 km → 10 km → … → all Pakistan) with stock and price. From there you can **Order** or **Get a ride**.
 
-Built for the STCS AI Hackathon 2026 (Minhaj University Lahore) · SDG 3: Good Health & Well-Being
+**Stack:** React + Vite + Tailwind · Supabase (Postgres + pg_trgm + 2 Edge Functions) · MapLibre + OpenFreeMap (3D globe, free, no key) · Google Gemini (AI) · Browser Web Speech API (voice, free).
+
+```
+Text / photo / voice
+   │
+   ├─ search_medicines()      Postgres fuzzy search (free, ~10 ms)
+   ├─ extract-medicines       Gemini: photo/PDF/bad spelling → medicine names
+   ├─ dawa-assistant          Gemini: answers questions, grounded ONLY in our DB
+   ├─ nearby_pharmacies()     distance search, auto-widening radius
+   ├─ medicine_alternatives() same formula + form, cheapest per unit first
+   └─ place_order()           validated, atomic stock decrement
+```
 
 ---
 
-## The problem
-In Pakistan, when a medicine is short or hard to find, patients and their families go **shop to shop** with a prescription. That costs time, money and, for critical medicines (insulin, inhalers, antibiotics), it costs health. Pharmacies don't publish stock anywhere, so nobody can see where a medicine is available.
+## STEP 1 — Supabase database (10 min)
 
-**Who it affects:** patients and caregivers (especially the elderly and people with chronic conditions), and small independent pharmacies that lose customers they could have served.
-
-## The solution
-1. **Patient** types a medicine (typos and Roman Urdu are fine), speaks it, or **scans a prescription**.
-2. DawaDhoondo shows **nearby pharmacies that have it in stock**, nearest first, on a map, with call and directions.
-3. If no one has it, it shows **same-salt, same-strength brands** that are available (with a clear "ask your doctor or pharmacist first" note) and the nearest pharmacies to call.
-4. **Pharmacies** keep stock updated by **photographing their supplier bill**. Lines are read automatically, the pharmacist checks them, and stock updates in one tap.
-5. Every search feeds an anonymous **shortage radar**: medicines people search for but can't find nearby.
-
-## Where AI is used (and where it is not)
-| Step | How | Why |
-|---|---|---|
-| Read a prescription photo | Gemini vision → structured JSON | Handwriting and mixed Urdu/English need vision AI |
-| Understand messy typed/spoken input | Gemini → normalized medicine names | "pandol", "augmantin", Urdu script |
-| Read a supplier bill | Gemini vision → items, qty, price | Removes manual data entry, the main reason pharmacies would never update stock |
-| Match names to the catalog | **PostgreSQL trigram search (deterministic)** | Reliable, free, explainable |
-| Nearest pharmacy, alternatives, shortages | **SQL (deterministic)** | Must be exact, not generated |
-
-Safety rules built into the prompts: never invent medicines, never give dosage or diagnosis, and symptom questions ("bukhar ki dawa") are refused with a "please ask a doctor or pharmacist" note. Same-salt alternatives come from the database, not the model.
-
-## Tech stack
-- **Frontend:** React 18 + Vite + Tailwind CSS v4, Leaflet + OpenStreetMap
-- **Backend:** Vercel serverless function `/api/ai` (Gemini key stays server-side)
-- **Database & auth:** Supabase (PostgreSQL, Row Level Security, pg_trgm)
-- **Data:** real pharmacy locations from OpenStreetMap; catalog of common Pakistani brands; stock entered by pharmacies
-
-### Security
-- Gemini key only on the server; never in the browser or the repo
-- RLS: anyone can read stock; only a pharmacy's owner can change its stock; owners cannot mark themselves verified
-- Uploaded photos are processed and not stored; search logs keep location rounded to ~1 km
-
-## Startup model
-- **Free for patients.**
-- **Pharmacies:** free listing; paid plan (~Rs 1,500/month) for featured placement, demand alerts ("12 people near you searched Lantus today") and simple inventory reports.
-- **Distributors & pharma companies:** paid shortage-radar dashboards showing unmet demand by area.
-- **Public health partners:** aggregated, anonymous shortage data for DRAP / provincial health departments.
-- **Growth:** onboard pharmacies area by area (start around universities and hospitals), the same way delivery apps onboarded restaurants.
-
-## Run locally
-```bash
-npm install
-cp .env.example .env      # fill in your keys
-npm run dev               # http://localhost:5173 (the /api route runs locally too)
-```
-
-### One-time database setup (Supabase)
-1. Create a free project at supabase.com
-2. SQL Editor → run `supabase/schema.sql`, then `supabase/seed_medicines.sql`
-3. Authentication → Providers → Email → turn off **Confirm email** (for instant pharmacy signup in demos)
-4. Import real Lahore pharmacies from OpenStreetMap:
-   ```bash
-   node --env-file=.env scripts/import-pharmacies.mjs
+1. Go to **supabase.com** → New project (free plan).
+   Then copy two values from **Project Settings → API**: the **Project URL** and the **anon public key**.
+2. **SQL Editor** → paste and run `supabase/01_schema.sql`.
+3. **Table Editor → `medicines_import` → Insert → Import data from CSV** → choose `pakistan_medicines_supabase.csv` (6 MB, 21,957 rows).
+4. **SQL Editor** → run `supabase/02_load_medicines.sql`. Expect `medicines = 21957`.
+5. **SQL Editor** → run `supabase/03_seed_demo_pharmacies.sql`. Expect `150 pharmacies`, about 460k stock rows. It takes about 10 s.
+6. Quick test in the SQL Editor:
+   ```sql
+   select product_name, generic_composition, score from search_medicines('panadoll', 5);
    ```
 
-### Deploy (Vercel)
-Import the repo in Vercel and add the env vars `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`). Deploy.
+> Re-running `01_schema.sql` drops and recreates medicines, inventory and orders. Run steps 3–5 again after it.
 
-## Limitations & next steps
-- Stock accuracy depends on pharmacies updating it; next: WhatsApp-based updates and POS integrations
-- Pharmacy claiming needs verification (phone OTP / license number) before public launch
-- Catalog will grow from pharmacy bills; next: import the DRAP registered products list
-- Urdu interface, and SMS search for feature phones
+## STEP 2 — Get a Google Gemini API key (2 min)
+
+1. Open **https://aistudio.google.com/apikey** → sign in with your Google account → **Create API key**.
+2. Copy the key (starts with `AIza…`).
+3. **Never** put this key in the frontend, `.env`, or GitHub. It lives only in Supabase secrets (step 3).
+4. Free-tier limits are per Google Cloud project and change over time. Check yours under AI Studio → **Usage / Rate limits**.
+   The app uses AI only when it's needed: typed searches don't call Gemini at all.
+
+## STEP 3 — Deploy the two AI functions (5 min)
+
+On your laptop, inside this project folder:
+```bash
+npm i -g supabase                         # Supabase CLI
+supabase login                            # opens browser
+supabase link --project-ref YOUR_PROJECT_REF   # the xxxx in https://xxxx.supabase.co
+supabase secrets set GEMINI_API_KEY=AIza...your_key
+supabase secrets set GEMINI_MODEL=gemini-2.5-flash   # optional; change if Google renames models
+supabase functions deploy extract-medicines
+supabase functions deploy dawa-assistant
+```
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are injected into functions automatically, so don't set them.
+
+Test from the terminal:
+```bash
+curl -X POST https://YOUR_REF.supabase.co/functions/v1/dawa-assistant \
+  -H "Authorization: Bearer YOUR_ANON_KEY" -H "Content-Type: application/json" \
+  -d '{"question":"Where can I get augmentin near me?","lang":"en","lat":31.52,"lng":74.35}'
+```
+You should get `answer` (text), `medicine`, `nearby.pharmacies` and `alternatives`.
+
+## STEP 4 — Frontend + Vercel (5 min)
+
+Local:
+```bash
+npm install
+cp .env.example .env    # set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+npm run dev
+```
+Vercel: **Add New Project → import the GitHub repo**. Add the same two env vars, then Deploy.
+Every push to `main` redeploys automatically. HTTPS is required for the microphone and GPS.
+
+---
+
+## How the voice agent works
+
+```
+🎤 Browser SpeechRecognition (en-PK / ur-PK, free, Chrome/Edge)
+   → text question
+   → Edge Function dawa-assistant
+        1. find medicine names: DB fuzzy search on each word (free);
+           if none (Urdu script / bad spelling) → 1 Gemini call to extract names
+        2. top match → nearby pharmacies + cheaper alternatives (DB)
+        3. 1 Gemini call: answer using ONLY that data, 2–4 spoken sentences,
+           in English or Urdu, safety rules (no dosing/diagnosis, emergency → 1122)
+   → answer text + medicine + pharmacies
+🔊 Browser speechSynthesis reads the answer. The map and list update to the same result.
+```
+- **Cost:** 1–2 Gemini calls per question. Voice in and out is free (it runs in the browser).
+- **Languages:** EN / اردو toggle. Recognising Urdu speech works in Chrome. Speaking Urdu depends on the device having an Urdu voice. If it doesn't, the answer is shown as text.
+- **Firefox/Safari:** voice input may not be available. Typing in the assistant box always works.
+- **Upgrade later (optional):** the Gemini Live API gives real-time two-way voice. It needs WebSockets and short-lived tokens, so it's more work than the 2-hour scope.
+
+## Demo script (3 min)
+1. The globe spins, then flies to Pakistan.
+2. Type `panadoll` → Panadol Tablets. Pharmacies appear 1–3 km away and the camera tilts into 3D streets.
+3. Click a pharmacy → route line → **Get a ride** / **Directions** / **Order** → order ID.
+4. 🎙️ Click "Ask DawaDhoondo" and say: "Augmentin ka sasta option kahan milega?" → spoken answer, and the map updates.
+5. Switch to اردو and ask in Urdu.
+6. Upload a prescription photo → all medicines extracted.
+
+## Data
+- `pakistan_medicines_supabase.csv`: 21,957 rows, sorted by name.
+  - Source: DRAP Pharmaceutical Product Price Index (e.dra.gov.pk), scraped 17 Nov 2026, plus 53 extra common brands from a curated GitHub list (price approximate, marked in `source`).
+  - Cleaned: removed "Each tablet contains…" text; standard `generic_name` + `formula_key`; 20 standard dosage forms; numeric price; `pack_units` and `price_per_unit`; ISO dates; `is_common` flag.
+- **Pharmacies and stock are generated demo data** (`is_demo = true`). Say so to the judges.
+
+## Security
+- RLS: the public can only read medicines, pharmacies and stock. Orders are written only through `place_order`.
+- The Gemini key is kept in Supabase secrets only. The assistant can't invent prices or pharmacies: it only sees DB rows.
